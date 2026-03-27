@@ -1,6 +1,6 @@
 # PixelPrep Desktop
 
-A fast, native desktop application for bulk image resizing and cropping with per-image pan, zoom, and rotation controls.
+A fast, offline desktop application for bulk image resizing and cropping with per-image pan, zoom, and rotation controls.
 <img width="2066" height="1188" alt="image" src="https://github.com/user-attachments/assets/067bd043-2e99-470b-871b-e701682c655e" />
 
 
