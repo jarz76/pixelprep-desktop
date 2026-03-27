@@ -1,6 +1,9 @@
 # PixelPrep Desktop
 
 A fast, native desktop application for bulk image resizing and cropping with per-image pan, zoom, and rotation controls.
+<img width="2066" height="1188" alt="image" src="https://github.com/user-attachments/assets/067bd043-2e99-470b-871b-e701682c655e" />
+
+
 
 > **Note:** This desktop app is inspired by the UI design of [Presize.io](https://presize.io) - a web-based bulk image resizer. Check out the original web app at [github.com/kunchenguid/presize](https://github.com/kunchenguid/presize).
 
