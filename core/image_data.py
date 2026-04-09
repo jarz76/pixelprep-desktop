@@ -12,6 +12,7 @@ class ImageItem:
     pan_x: float = 0.0
     pan_y: float = 0.0
     rotation: float = 0.0
+    caption: str = ""
 
     _original_width: int = field(default=0, repr=False, compare=False)
     _original_height: int = field(default=0, repr=False, compare=False)

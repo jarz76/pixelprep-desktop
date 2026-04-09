@@ -35,6 +35,7 @@ class ExportWorker(QRunnable):
         rotation: float,
         output_format: str,
         sizing_mode: str,
+        caption: str = "",
     ):
         super().__init__()
         self.file_path = file_path
@@ -47,6 +48,7 @@ class ExportWorker(QRunnable):
         self.rotation = rotation
         self.output_format = output_format
         self.sizing_mode = sizing_mode
+        self.caption = caption
         self.signals = _WorkerSignals()
 
     @pyqtSlot()
@@ -138,6 +140,11 @@ class ExportWorker(QRunnable):
             else:
                 img.save(self.output_path, "PNG")
 
+            if self.caption and self.caption.strip():
+                txt_path = os.path.splitext(self.output_path)[0] + ".txt"
+                with open(txt_path, "w", encoding="utf-8") as f:
+                    f.write(self.caption.strip())
+
             self.signals.finished.emit(ExportResult(self.file_path, True))
         except Exception as e:
             self.signals.finished.emit(ExportResult(self.file_path, False, str(e)))
@@ -192,6 +199,7 @@ class BatchExporter(QObject):
                 rotation=item.rotation,
                 output_format=output_format,
                 sizing_mode=sizing_mode,
+                caption=item.caption,
             )
             worker.signals.finished.connect(self._on_worker_finished)
             self._pool.start(worker)
