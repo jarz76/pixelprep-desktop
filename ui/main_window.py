@@ -3,7 +3,7 @@
 import os
 from datetime import datetime
 
-from PyQt6.QtCore import QPoint, Qt
+from PyQt6.QtCore import QPoint, Qt, QSettings
 from PyQt6.QtGui import QMouseEvent
 from PyQt6.QtWidgets import (
     QFileDialog,
@@ -18,6 +18,7 @@ from PyQt6.QtWidgets import (
 
 from core.image_data import ImageItem
 from core.processor import BatchExporter
+from core.captioner import BatchCaptioner
 from ui.image_list import ImageListWidget
 from ui.sidebar import Sidebar
 
@@ -136,6 +137,12 @@ class MainWindow(QMainWindow):
         self._exporter.all_done.connect(self._on_export_done)
         self._exporter.error_occurred.connect(self._on_export_error)
 
+        self._captioner = BatchCaptioner(self)
+        self._captioner.progress.connect(self._on_export_progress)
+        self._captioner.item_done.connect(self._on_caption_item_done)
+        self._captioner.all_done.connect(self._on_caption_all_done)
+        self._captioner.error_occurred.connect(self._on_export_error)
+
         self._build_ui()
         self._connect_signals()
 
@@ -178,6 +185,9 @@ class MainWindow(QMainWindow):
         self._sidebar.clear_all_clicked.connect(self._clear_all_images)
         self._sidebar.export_clicked.connect(self._export_to_folder)
         self._sidebar.export_zip_clicked.connect(self._export_to_zip)
+        self._sidebar.caption_all_clicked.connect(lambda: self._start_captioning(False))
+        self._sidebar.caption_missing_clicked.connect(lambda: self._start_captioning(True))
+        self._sidebar.replace_all_clicked.connect(self._replace_captions)
         self._sidebar.settings_changed.connect(self._on_settings_changed)
         self._sidebar.preview_size_changed.connect(self._image_list.set_card_width)
 
@@ -191,6 +201,16 @@ class MainWindow(QMainWindow):
 
     def _clear_all_images(self):
         self._image_list.clear_all()
+
+    def _replace_captions(self, target: str, replacement: str):
+        count = 0
+        for item in self._image_list.items:
+            if item.caption and target in item.caption:
+                item.caption = item.caption.replace(target, replacement)
+                self._image_list.update_item_caption(item)
+                count += 1
+        
+        self._image_list.show_notification(f"✅ Replaced '{target}' with '{replacement}' in {count} captions", 3000, is_success=True)
 
     # ── Actions ─────────────────────────────────────────────
 
@@ -282,15 +302,66 @@ class MainWindow(QMainWindow):
     def _on_export_progress(self, completed: int, total: int):
         self._sidebar.update_progress(completed, total)
 
+    def _start_captioning(self, skip_existing: bool):
+        items = self._image_list.items
+        if not items:
+            self._image_list.show_notification("⚠️ No images to caption", 2500)
+            return
+
+        settings = QSettings("PixelPrep", "Settings")
+        api_url = settings.value("api_url", "https://api.openai.com").strip()
+        api_key = settings.value("api_key", "").strip()
+        api_model = settings.value("api_model", "gpt-4o").strip()
+        api_prompt = self._sidebar.api_prompt_edit.toPlainText().strip()
+        
+        if not api_url or not api_model:
+            self._image_list.show_notification("⚠️ Please configure API URL and Model", 3000)
+            return
+
+        to_process = [it for it in items] if not skip_existing else [it for it in items if not it.caption.strip()]
+        if not to_process:
+            self._image_list.show_notification("⚠️ No missing captions found", 2500)
+            return
+
+        self._sidebar.set_exporting(True, len(to_process))
+        self._captioner.start_captioning(
+            items=items,
+            target_w=self._sidebar.output_width,
+            target_h=self._sidebar.output_height,
+            sizing_mode=self._sidebar.output_mode,
+            base_url=api_url,
+            api_key=api_key,
+            model=api_model,
+            system_prompt=api_prompt,
+            skip_existing=skip_existing
+        )
+
+    def _on_caption_item_done(self, item):
+        self._image_list.update_item_caption(item)
+
+    def _on_export_error(self, error_msg: str):
+        print(f"Error: {error_msg}")
+        if not hasattr(self, "_first_error") or not self._first_error:
+            self._first_error = error_msg
+
+    def _on_caption_all_done(self, succeeded: int, failed: int):
+        self._sidebar.set_exporting(False)
+        if failed == 0:
+            self._image_list.show_notification(f"✅ Auto-caption complete! {succeeded} images captioned", 3000, is_success=True)
+            self._first_error = None
+        else:
+            err_msg = getattr(self, "_first_error", "Unknown error")
+            self._image_list.show_notification(f"⚠️ Captioning finished: {succeeded} succeeded, {failed} failed. Example error: {err_msg}", 5000, is_success=False)
+            self._first_error = None
+
     def _on_export_done(self, succeeded: int, failed: int):
         self._sidebar.set_exporting(False)
         if failed == 0:
             self._image_list.show_notification(f"✅ Export complete! {succeeded} images saved", 3000, is_success=True)
+            self._first_error = None
         else:
-            self._image_list.show_notification(f"⚠️ {succeeded} succeeded, {failed} failed", 3000, is_success=False)
-
-    def _on_export_error(self, error_msg: str):
-        pass  # summary shown at the end
+            self._image_list.show_notification(f"⚠️ Export finished: {succeeded} succeeded, {failed} failed", 5000, is_success=False)
+            self._first_error = None
 
     # ── Window-level drag & drop ────────────────────────────
 

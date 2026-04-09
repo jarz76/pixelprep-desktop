@@ -1,6 +1,6 @@
 """Sidebar settings panel for PixelPrep desktop app."""
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal, QSettings
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
     QComboBox,
@@ -10,8 +10,11 @@ from PyQt6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QSpinBox,
+    QTabWidget,
+    QTextEdit,
     QVBoxLayout,
     QWidget,
+    QCheckBox,
 )
 
 
@@ -42,6 +45,10 @@ class Sidebar(QWidget):
     clear_all_clicked = pyqtSignal()
     settings_changed = pyqtSignal()
     preview_size_changed = pyqtSignal(int)  # card width in pixels
+    caption_all_clicked = pyqtSignal()
+    caption_missing_clicked = pyqtSignal()
+    caption_settings_changed = pyqtSignal()
+    replace_all_clicked = pyqtSignal(str, str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -79,103 +86,222 @@ class Sidebar(QWidget):
         preview_row.addWidget(self.preview_size_combo)
         layout.addLayout(preview_row)
 
-        # --- Separator ---
         layout.addWidget(self._separator())
 
-        # --- Output Mode ---
-        layout.addWidget(self._label("Output Mode"))
+        # --- TABS ---
+        self.tabs = QTabWidget()
+        self.tabs.setStyleSheet("""
+            QTabWidget::pane { border: 1px solid #2A3A4A; border-radius: 4px; background: #1E2A35; }
+            QTabBar::tab { background: #151E28; color: #8899AA; padding: 6px 12px; border: 1px solid #2A3A4A; border-bottom: none; border-top-left-radius: 4px; border-top-right-radius: 4px; }
+            QTabBar::tab:selected { background: #1E2A35; color: #00BCD4; }
+        """)
+        layout.addWidget(self.tabs)
+
+        # TAB 1: Export Options
+        export_tab = QWidget()
+        export_layout = QVBoxLayout(export_tab)
+        export_layout.setContentsMargins(10, 10, 10, 10)
+        export_layout.setSpacing(6)
+
+        export_layout.addWidget(self._label("Output Mode"))
         self.mode_combo = Dropdown()
         self.mode_combo.addItem("Fixed Size", "fixed_size")
         self.mode_combo.addItem("Fixed Aspect Ratio", "fixed_aspect_ratio")
         self.mode_combo.setStyleSheet(self._combo_style())
         self.mode_combo.currentIndexChanged.connect(lambda: self.settings_changed.emit())
-        layout.addWidget(self.mode_combo)
+        export_layout.addWidget(self.mode_combo)
 
-        mode_hint = QLabel(
-            "Fixed Size: exact output dimensions.\n"
-            "Aspect Ratio: preserves max resolution."
-        )
+        mode_hint = QLabel("Fixed Size: exact output dimensions.\nAspect Ratio: preserves max resolution.")
         mode_hint.setStyleSheet("color: #667788; font-size: 10px; margin-bottom: 4px;")
         mode_hint.setWordWrap(True)
-        layout.addWidget(mode_hint)
+        export_layout.addWidget(mode_hint)
 
-        # --- Dimensions ---
-        layout.addWidget(self._label("Width"))
+        export_layout.addWidget(self._label("Width"))
         self.width_spin = QSpinBox()
         self.width_spin.setRange(1, 16384)
         self.width_spin.setValue(512)
         self.width_spin.setSuffix(" px")
         self.width_spin.setStyleSheet(self._spin_style())
         self.width_spin.valueChanged.connect(lambda: self.settings_changed.emit())
-        layout.addWidget(self.width_spin)
+        export_layout.addWidget(self.width_spin)
 
-        layout.addWidget(self._label("Height"))
+        export_layout.addWidget(self._label("Height"))
         self.height_spin = QSpinBox()
         self.height_spin.setRange(1, 16384)
         self.height_spin.setValue(512)
         self.height_spin.setSuffix(" px")
         self.height_spin.setStyleSheet(self._spin_style())
         self.height_spin.valueChanged.connect(lambda: self.settings_changed.emit())
-        layout.addWidget(self.height_spin)
+        export_layout.addWidget(self.height_spin)
 
-        # --- Format ---
-        layout.addWidget(self._separator())
-        layout.addWidget(self._label("Format"))
+        export_layout.addWidget(self._separator())
+        export_layout.addWidget(self._label("Format"))
         self.format_combo = Dropdown()
         self.format_combo.addItem("PNG", "png")
         self.format_combo.addItem("JPEG", "jpeg")
         self.format_combo.setStyleSheet(self._combo_style())
         self.format_combo.currentIndexChanged.connect(lambda: self.settings_changed.emit())
-        layout.addWidget(self.format_combo)
+        export_layout.addWidget(self.format_combo)
 
-        # --- Zip filename template ---
-        layout.addWidget(self._label("Zip Filename"))
+        export_layout.addWidget(self._label("Zip Filename"))
         self.zip_name_edit = QLineEdit()
         self.zip_name_edit.setPlaceholderText("PixelPrep_{timestamp}")
         self.zip_name_edit.setText("PixelPrep_{timestamp}")
         self.zip_name_edit.setStyleSheet(self._input_style())
-        layout.addWidget(self.zip_name_edit)
+        export_layout.addWidget(self.zip_name_edit)
+        export_layout.addStretch()
 
-        # --- Image count ---
+        self.tabs.addTab(export_tab, "Export")
+
+        # TAB 2: Caption
+        caption_tab = QWidget()
+        caption_layout = QVBoxLayout(caption_tab)
+        caption_layout.setContentsMargins(10, 10, 10, 10)
+        caption_layout.setSpacing(6)
+
+        settings = QSettings("PixelPrep", "Settings")
+
+        # API Settings button row
+        api_row = QHBoxLayout()
+        api_row.setSpacing(6)
+
+        self._api_info_label = QLabel()
+        self._update_api_info_label()
+        self._api_info_label.setTextFormat(Qt.TextFormat.RichText)
+        self._api_info_label.setStyleSheet("background: transparent;")
+        api_row.addWidget(self._api_info_label, 1)
+
+        api_cfg_btn = QPushButton("⚙ API Settings")
+        api_cfg_btn.setStyleSheet(self._btn_secondary_style() + "QPushButton { padding: 4px 8px; font-size: 11px; }")
+        api_cfg_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        api_cfg_btn.clicked.connect(self._open_api_settings)
+        api_row.addWidget(api_cfg_btn)
+        caption_layout.addLayout(api_row)
+
+        caption_layout.addWidget(self._separator_thin())
+
+        # Model
+        caption_layout.addWidget(self._label("Model"))
+        model_row = QHBoxLayout()
+        model_row.setSpacing(4)
+        
+        self.api_model_combo = QComboBox()
+        self.api_model_combo.setEditable(True)
+        self.api_model_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self.api_model_combo.setStyleSheet(self._combo_editable_style())
+        
+        # Make the dropdown searchable
+        completer = self.api_model_combo.completer()
+        if completer is not None:
+            completer.setFilterMode(Qt.MatchFlag.MatchContains)
+            completer.setCompletionMode(completer.CompletionMode.PopupCompletion)
+
+        saved_model = settings.value("api_model", "gpt-4o")
+        self.api_model_combo.setCurrentText(saved_model)
+        self.api_model_combo.currentTextChanged.connect(self._save_caption_settings)
+        model_row.addWidget(self.api_model_combo, 1)
+
+        self.refresh_model_btn = QPushButton("↻")
+        self.refresh_model_btn.setToolTip("Fetch models from Provider")
+        self.refresh_model_btn.setFixedWidth(28)
+        self.refresh_model_btn.setStyleSheet(self._btn_secondary_style() + "QPushButton { padding: 0; font-size: 14px; }")
+        self.refresh_model_btn.clicked.connect(self._fetch_models)
+        model_row.addWidget(self.refresh_model_btn)
+        
+        caption_layout.addLayout(model_row)
+
+        self.vision_only_cb = QCheckBox("Show Vision models only")
+        self.vision_only_cb.setChecked(settings.value("api_vision_only", True, type=bool))
+        self.vision_only_cb.setStyleSheet("""
+            QCheckBox { color: #8899AA; font-size: 11px; margin-left: 2px; }
+            QCheckBox::indicator { width: 14px; height: 14px; border-radius: 3px; border: 1px solid #2A3A4A; background: #1E2A35; }
+            QCheckBox::indicator:checked { background: #00BCD4; border: 1px solid #00BCD4; }
+        """)
+        self.vision_only_cb.stateChanged.connect(self._save_caption_settings)
+        caption_layout.addWidget(self.vision_only_cb)
+
+        caption_layout.addWidget(self._label("System Prompt"))
+        self.api_prompt_edit = QTextEdit()
+        self.api_prompt_edit.setPlaceholderText("e.g. Describe this image in detail, focusing on style, composition, and subject.")
+        self.api_prompt_edit.setText(settings.value("api_prompt", "Describe this image in detail."))
+        self.api_prompt_edit.setStyleSheet(self._textedit_style())
+        self.api_prompt_edit.textChanged.connect(self._save_caption_settings)
+        caption_layout.addWidget(self.api_prompt_edit, 1)  # stretch=1 -> expand
+
+        self.cap_all_btn = QPushButton("✨ Caption All")
+        self.cap_all_btn.setStyleSheet(self._btn_secondary_style())
+        self.cap_all_btn.clicked.connect(self.caption_all_clicked.emit)
+        caption_layout.addWidget(self.cap_all_btn)
+
+        self.cap_missing_btn = QPushButton("✨ Caption Missing")
+        self.cap_missing_btn.setStyleSheet(self._btn_secondary_style())
+        self.cap_missing_btn.clicked.connect(self.caption_missing_clicked.emit)
+        caption_layout.addWidget(self.cap_missing_btn)
+        
+        caption_layout.addStretch()
+        self.tabs.addTab(caption_tab, "Caption")
+
+        # TAB 3: Batch Edit
+        edit_tab = QWidget()
+        edit_layout = QVBoxLayout(edit_tab)
+        edit_layout.setContentsMargins(10, 10, 10, 10)
+        edit_layout.setSpacing(6)
+
+        edit_layout.addWidget(self._label("Target Word/Phrase"))
+        self.find_edit = QLineEdit()
+        self.find_edit.setPlaceholderText("Text to find...")
+        self.find_edit.setStyleSheet(self._input_style())
+        edit_layout.addWidget(self.find_edit)
+
+        edit_layout.addWidget(self._label("Replace With"))
+        self.replace_edit = QLineEdit()
+        self.replace_edit.setPlaceholderText("New text...")
+        self.replace_edit.setStyleSheet(self._input_style())
+        edit_layout.addWidget(self.replace_edit)
+
+        self.replace_btn = QPushButton("✏️ Replace All")
+        self.replace_btn.setStyleSheet(self._btn_secondary_style())
+        self.replace_btn.clicked.connect(self._emit_replace_all)
+        edit_layout.addWidget(self.replace_btn)
+
+        edit_layout.addStretch()
+        self.tabs.addTab(edit_tab, "Trigger Word")
+
+        # --- Bottom area: counts & global actions ---
         layout.addWidget(self._separator())
         self.count_label = QLabel("0 images loaded")
         self.count_label.setStyleSheet("color: #8899AA; font-size: 12px; padding: 4px 0;")
         self.count_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.count_label)
 
-        # --- Buttons ---
-        self.add_btn = QPushButton("＋  Add Files")
+        btn_row = QHBoxLayout()
+        self.add_btn = QPushButton("＋ Add Files")
         self.add_btn.setStyleSheet(self._btn_secondary_style())
-        self.add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.add_btn.clicked.connect(self.add_files_clicked.emit)
-        layout.addWidget(self.add_btn)
+        btn_row.addWidget(self.add_btn)
 
-        self.add_folder_btn = QPushButton("📁  Add Folder")
+        self.add_folder_btn = QPushButton("📁 Add Folder")
         self.add_folder_btn.setStyleSheet(self._btn_secondary_style())
-        self.add_folder_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.add_folder_btn.clicked.connect(self.add_folder_clicked.emit)
-        layout.addWidget(self.add_folder_btn)
+        btn_row.addWidget(self.add_folder_btn)
+        layout.addLayout(btn_row)
 
-        self.clear_btn = QPushButton("🗑️  Clear All")
+        self.clear_btn = QPushButton("🗑️ Clear All")
         self.clear_btn.setStyleSheet(self._btn_clear_style())
-        self.clear_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.clear_btn.clicked.connect(self.clear_all_clicked.emit)
         self.clear_btn.setVisible(False)
         layout.addWidget(self.clear_btn)
 
-        self.export_folder_btn = QPushButton("📂  Export to Folder")
+        self.export_folder_btn = QPushButton("📂 Export to Folder")
         self.export_folder_btn.setStyleSheet(self._btn_primary_style())
-        self.export_folder_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.export_folder_btn.clicked.connect(self.export_clicked.emit)
         layout.addWidget(self.export_folder_btn)
 
-        self.export_zip_btn = QPushButton("📦  Save as ZIP")
+        self.export_zip_btn = QPushButton("📦 Save as ZIP")
         self.export_zip_btn.setStyleSheet(self._btn_primary_style())
-        self.export_zip_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.export_zip_btn.clicked.connect(self.export_zip_clicked.emit)
         layout.addWidget(self.export_zip_btn)
 
-        # --- Progress ---
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
@@ -183,23 +309,115 @@ class Sidebar(QWidget):
         self.progress_bar.setFormat("%v / %m")
         self.progress_bar.setVisible(False)
         self.progress_bar.setStyleSheet("""
-            QProgressBar {
-                border: none;
-                border-radius: 6px;
-                background: #1E2A35;
-                height: 22px;
-                text-align: center;
-                color: #CCDDEE;
-                font-size: 11px;
-            }
-            QProgressBar::chunk {
-                background: qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #00BCD4, stop:1 #0097A7);
-                border-radius: 6px;
-            }
+            QProgressBar { border: none; border-radius: 6px; background: #1E2A35; height: 22px; text-align: center; color: #CCDDEE; font-size: 11px; }
+            QProgressBar::chunk { background: qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #00BCD4, stop:1 #0097A7); border-radius: 6px; }
         """)
         layout.addWidget(self.progress_bar)
 
-        layout.addStretch()
+    def _save_caption_settings(self):
+        settings = QSettings("PixelPrep", "Settings")
+        settings.setValue("api_model", self.api_model_combo.currentText().strip())
+        settings.setValue("api_prompt", self.api_prompt_edit.toPlainText())
+        settings.setValue("api_vision_only", self.vision_only_cb.isChecked())
+
+    def _update_api_info_label(self):
+        settings = QSettings("PixelPrep", "Settings")
+        url = settings.value("api_url", "https://api.openai.com")
+        url_short = url.replace("https://", "").replace("http://", "").rstrip("/")
+        if len(url_short) > 30: url_short = url_short[:30] + "…"
+        self._api_info_label.setText(
+            f"<span style='color:#8899AA;font-size:10px;'>{url_short}</span>"
+        )
+
+    def _emit_replace_all(self):
+        target = self.find_edit.text()
+        new_text = self.replace_edit.text()
+        if target:
+            self.replace_all_clicked.emit(target, new_text)
+
+    def _open_api_settings(self):
+        from ui.api_settings_dialog import ApiSettingsDialog
+        dlg = ApiSettingsDialog(self)
+        if dlg.exec():
+            self._update_api_info_label()
+            self.caption_settings_changed.emit()
+
+    def _fetch_models(self):
+        import json
+        import urllib.request
+        import ssl
+        from PyQt6.QtWidgets import QMessageBox
+
+        settings = QSettings("PixelPrep", "Settings")
+        base_url = settings.value("api_url", "https://api.openai.com").strip().rstrip('/')
+        api_key = settings.value("api_key", "").strip()
+
+        if not base_url:
+            QMessageBox.warning(self, "Error", "Please configure a Base URL in settings first.")
+            return
+
+        endpoint = f"{base_url}/v1/models"
+        self.refresh_model_btn.setText("...")
+        self.refresh_model_btn.setEnabled(False)
+        self.api_model_combo.clear()
+
+        vision_only = self.vision_only_cb.isChecked()
+
+        def worker():
+            try:
+                headers = {"Accept": "application/json"}
+                if api_key: headers["Authorization"] = f"Bearer {api_key}"
+                req = urllib.request.Request(endpoint, headers=headers)
+                ctx = ssl.create_default_context()
+                ctx.check_hostname = False
+                ctx.verify_mode = ssl.CERT_NONE
+                
+                with urllib.request.urlopen(req, context=ctx, timeout=10) as response:
+                    data = json.loads(response.read().decode())
+                    
+                models = []
+                if "data" in data and isinstance(data["data"], list):
+                    for m in data["data"]:
+                        if vision_only and isinstance(m, dict) and "architecture" in m:
+                            arch = m.get("architecture")
+                            if isinstance(arch, dict):
+                                mods = arch.get("input_modalities", [])
+                                if isinstance(mods, list) and "image" not in mods:
+                                    continue  # Skip because it explicitly lacks image input
+                        models.append(m.get("id", m.get("model", "")))
+                elif isinstance(data, list):
+                    for m in data:
+                        if vision_only and isinstance(m, dict) and "architecture" in m:
+                            arch = m.get("architecture")
+                            if isinstance(arch, dict):
+                                mods = arch.get("input_modalities", [])
+                                if isinstance(mods, list) and "image" not in mods:
+                                    continue
+                        if isinstance(m, dict):
+                            models.append(m.get("id", m.get("model", "")))
+                        else:
+                            models.append(m)
+                
+                return True, sorted([str(m) for m in models if m])
+            except Exception as e:
+                return False, str(e)
+
+        try:
+            success, result = worker()
+            if success:
+                self.api_model_combo.addItems(result)
+                if not result:
+                    QMessageBox.warning(self, "Warning", "Provider returned an empty model list.")
+            else:
+                QMessageBox.critical(self, "Fetch Failed", f"Could not fetch models:\\n\\n{result}")
+        finally:
+            self.refresh_model_btn.setText("↻")
+            self.refresh_model_btn.setEnabled(True)
+            
+        saved = settings.value("api_model", "gpt-4o")
+        if self.api_model_combo.findText(saved) == -1:
+            self.api_model_combo.insertItem(0, saved)
+        self.api_model_combo.setCurrentText(saved)
 
     # ── Properties ──────────────────────────────────────────
 
@@ -239,6 +457,8 @@ class Sidebar(QWidget):
         self.export_zip_btn.setEnabled(not exporting)
         self.add_btn.setEnabled(not exporting)
         self.add_folder_btn.setEnabled(not exporting)
+        self.cap_all_btn.setEnabled(not exporting)
+        self.cap_missing_btn.setEnabled(not exporting)
         self.progress_bar.setVisible(exporting)
         if exporting:
             self.progress_bar.setRange(0, total)
@@ -260,6 +480,13 @@ class Sidebar(QWidget):
         sep = QWidget()
         sep.setFixedHeight(1)
         sep.setStyleSheet("background: #2A3A4A; margin: 8px 0;")
+        return sep
+
+    @staticmethod
+    def _separator_thin() -> QWidget:
+        sep = QWidget()
+        sep.setFixedHeight(1)
+        sep.setStyleSheet("background: #1E2A35; margin: 2px 0;")
         return sep
 
     @staticmethod
@@ -313,6 +540,35 @@ class Sidebar(QWidget):
         """
 
     @staticmethod
+    def _combo_editable_style() -> str:
+        return """
+            QComboBox {
+                background: #1E2A35;
+                border: 1px solid #2A3A4A;
+                border-radius: 4px;
+                padding: 4px 8px;
+                color: #D0DEE8;
+                font-size: 11px;
+            }
+            QComboBox:hover { border-color: #00BCD4; }
+            QComboBox::drop-down {
+                subcontrol-origin: padding;
+                subcontrol-position: top right;
+                width: 20px;
+                border-left: 1px solid #2A3A4A;
+            }
+            QComboBox QAbstractItemView {
+                background: #1E2A35;
+                border: 1px solid #2A3A4A;
+                border-radius: 4px;
+                color: #D0DEE8;
+                selection-background-color: #00BCD4;
+                selection-color: #FFFFFF;
+                padding: 2px;
+            }
+        """
+
+    @staticmethod
     def _spin_style() -> str:
         return """
             QSpinBox {
@@ -344,6 +600,21 @@ class Sidebar(QWidget):
             }
             QLineEdit:hover { border-color: #00BCD4; }
             QLineEdit:focus { border-color: #00BCD4; }
+        """
+
+    @staticmethod
+    def _textedit_style() -> str:
+        return """
+            QTextEdit {
+                background: #1E2A35;
+                border: 1px solid #2A3A4A;
+                border-radius: 6px;
+                padding: 6px 10px;
+                color: #D0DEE8;
+                font-size: 13px;
+            }
+            QTextEdit:hover { border-color: #00BCD4; }
+            QTextEdit:focus { border-color: #00BCD4; }
         """
 
     @staticmethod

@@ -40,6 +40,7 @@ from PyQt6.QtWidgets import (
     QScrollArea,
     QSlider,
     QSpinBox,
+    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -176,12 +177,7 @@ class ImagePreview(QWidget):
 
         painter.restore()
 
-        # Draw border around crop area
-        painter.setPen(QPen(QColor("#00BCD4"), 2))
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        bx = (w - self.target_w * widget_scale) / 2
-        by = (h - self.target_h * widget_scale) / 2
-        painter.drawRect(QRectF(bx, by, self.target_w * widget_scale, self.target_h * widget_scale))
+        # Border removed per user request
 
         painter.end()
 
@@ -352,6 +348,25 @@ class ImageCard(QWidget):
         rot_row.addWidget(self._rot_spin)
         ctrl_layout.addLayout(rot_row)
 
+        # Caption text area
+        self._caption_edit = QTextEdit()
+        self._caption_edit.setPlaceholderText("Enter caption...")
+        self._caption_edit.setText(self.item.caption)
+        self._caption_edit.setFixedHeight(70)
+        self._caption_edit.setStyleSheet("""
+            QTextEdit {
+                background: #141E28;
+                border: 1px solid #2A3A4A;
+                border-radius: 4px;
+                color: #C0D0E0;
+                font-size: 11px;
+                padding: 4px;
+            }
+            QTextEdit:focus { border-color: #00BCD4; }
+        """)
+        self._caption_edit.textChanged.connect(self._on_caption_changed)
+        ctrl_layout.addWidget(self._caption_edit)
+
         layout.addWidget(controls)
 
     def set_pixmap(self, pixmap: QPixmap, orig_w: int, orig_h: int):
@@ -389,6 +404,9 @@ class ImageCard(QWidget):
         self._rot_slider.setValue(value)
         self._rot_slider.blockSignals(False)
         self.preview.update()
+
+    def _on_caption_changed(self):
+        self.item.caption = self._caption_edit.toPlainText()
 
     def _on_preview_scroll(self, delta_y: int):
         step = 5 if delta_y > 0 else -5
@@ -699,7 +717,7 @@ class ImageListWidget(QWidget):
         target_aspect = self._target_w / self._target_h
         preview_h = int(base_card_w / target_aspect) if target_aspect > 0 else base_card_w
         preview_h = max(100, min(preview_h, 400))  # clamp
-        base_card_h = preview_h + 110  # controls height
+        base_card_h = preview_h + 140  # controls height
 
         container_w = self._scroll.viewport().width()
         if container_w <= 0:
@@ -731,7 +749,7 @@ class ImageListWidget(QWidget):
             cols = max(1, (usable_w + spacing) // (card_w + spacing))
 
         preview_h = max(100, preview_h)
-        card_h = preview_h + 110
+        card_h = preview_h + 140
 
         # Center the grid horizontally
         total_grid_w = cols * card_w + (cols - 1) * spacing
@@ -772,6 +790,14 @@ class ImageListWidget(QWidget):
         for card in self._cards:
             card.update_target_size(w, h)
         self._reflow()
+
+    def update_item_caption(self, item: ImageItem):
+        for card in self._cards:
+            if card.item == item:
+                card._caption_edit.blockSignals(True)
+                card._caption_edit.setText(item.caption)
+                card._caption_edit.blockSignals(False)
+                break
 
     def set_card_width(self, width: int):
         """Set the base card width for the grid preview."""
