@@ -19,6 +19,7 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+dist/
 
 # Virtual environments
 venv/
@@ -50,6 +51,7 @@ Desktop.ini
 *.exe
 *.app
 *.dmg
+main.spec
 
 # Test outputs
 .pytest_cache/
