@@ -36,6 +36,7 @@ class ExportWorker(QRunnable):
         output_format: str,
         sizing_mode: str,
         caption: str = "",
+        export_type: str = "both",
     ):
         super().__init__()
         self.file_path = file_path
@@ -49,11 +50,19 @@ class ExportWorker(QRunnable):
         self.output_format = output_format
         self.sizing_mode = sizing_mode
         self.caption = caption
+        self.export_type = export_type
         self.signals = _WorkerSignals()
 
     @pyqtSlot()
     def run(self):
         try:
+            if self.export_type == "caption":
+                if self.caption and self.caption.strip():
+                    with open(self.output_path, "w", encoding="utf-8") as f:
+                        f.write(self.caption.strip())
+                self.signals.finished.emit(ExportResult(self.file_path, True))
+                return
+
             img = Image.open(self.file_path)
             img = img.convert("RGBA")
 
@@ -134,16 +143,18 @@ class ExportWorker(QRunnable):
                     img = output
 
             # Save
-            if self.output_format.lower() == "jpeg":
-                img = img.convert("RGB")
-                img.save(self.output_path, "JPEG", quality=95)
-            else:
-                img.save(self.output_path, "PNG")
+            if self.export_type in ("both", "image"):
+                if self.output_format.lower() == "jpeg":
+                    img = img.convert("RGB")
+                    img.save(self.output_path, "JPEG", quality=95)
+                else:
+                    img.save(self.output_path, "PNG")
 
-            if self.caption and self.caption.strip():
-                txt_path = os.path.splitext(self.output_path)[0] + ".txt"
-                with open(txt_path, "w", encoding="utf-8") as f:
-                    f.write(self.caption.strip())
+            if self.export_type in ("both", "caption"):
+                if self.caption and self.caption.strip():
+                    txt_path = os.path.splitext(self.output_path)[0] + ".txt"
+                    with open(txt_path, "w", encoding="utf-8") as f:
+                        f.write(self.caption.strip())
 
             self.signals.finished.emit(ExportResult(self.file_path, True))
         except Exception as e:
@@ -166,7 +177,7 @@ class BatchExporter(QObject):
         self._total = 0
 
     def export_to_folder(self, items, output_dir, target_w, target_h,
-                         output_format, sizing_mode):
+                         output_format, export_type, sizing_mode):
         self._completed = 0
         self._succeeded = 0
         self._failed = 0
@@ -176,7 +187,7 @@ class BatchExporter(QObject):
             self.all_done.emit(0, 0)
             return
 
-        ext = "jpg" if output_format.lower() == "jpeg" else "png"
+        ext = "txt" if export_type == "caption" else ("jpg" if output_format.lower() == "jpeg" else "png")
         used_names = set()
 
         for item in items:
@@ -200,19 +211,20 @@ class BatchExporter(QObject):
                 output_format=output_format,
                 sizing_mode=sizing_mode,
                 caption=item.caption,
+                export_type=export_type,
             )
             worker.signals.finished.connect(self._on_worker_finished)
             self._pool.start(worker)
 
     def export_to_zip(self, items, zip_path, target_w, target_h,
-                      output_format, sizing_mode):
+                      output_format, export_type, sizing_mode):
         import tempfile
         self._zip_path = zip_path
         self._tmp_dir = tempfile.mkdtemp(prefix="pixelprep_")
         self._is_zip_export = True
 
         self.export_to_folder(items, self._tmp_dir, target_w, target_h,
-                              output_format, sizing_mode)
+                              output_format, export_type, sizing_mode)
 
     def _on_worker_finished(self, result: ExportResult):
         if result.success:

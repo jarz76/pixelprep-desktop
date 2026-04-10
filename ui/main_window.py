@@ -263,6 +263,7 @@ class MainWindow(QMainWindow):
             self._sidebar.output_width,
             self._sidebar.output_height,
             self._sidebar.output_format,
+            self._sidebar.export_type,
             self._sidebar.output_mode,
         )
 
@@ -294,6 +295,7 @@ class MainWindow(QMainWindow):
             self._sidebar.output_width,
             self._sidebar.output_height,
             self._sidebar.output_format,
+            self._sidebar.export_type,
             self._sidebar.output_mode,
         )
 

@@ -827,6 +827,16 @@ class ImageListWidget(QWidget):
         loaded_count = 0
         for fp in valid_files:
             item = ImageItem(file_path=fp)
+            
+            # Auto-load caption if a corresponding .txt exists
+            txt_path = os.path.splitext(fp)[0] + ".txt"
+            if os.path.exists(txt_path):
+                try:
+                    with open(txt_path, "r", encoding="utf-8") as f:
+                        item.caption = f.read().strip()
+                except Exception:
+                    pass
+
             self._items.append(item)
 
             card = ImageCard(item, self._target_w, self._target_h, self._container)

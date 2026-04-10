@@ -57,3 +57,11 @@ main.spec
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Environment variables
+.env
+.env.*
+
+# Generated Archives
+*.zip
+*.tar.gz

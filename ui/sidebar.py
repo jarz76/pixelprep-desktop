@@ -116,26 +116,46 @@ class Sidebar(QWidget):
         mode_hint.setWordWrap(True)
         export_layout.addWidget(mode_hint)
 
-        export_layout.addWidget(self._label("Width"))
+        dim_layout = QHBoxLayout()
+        dim_layout.setSpacing(10)
+
+        w_layout = QVBoxLayout()
+        w_layout.setSpacing(2)
+        w_layout.addWidget(self._label("Width"))
         self.width_spin = QSpinBox()
         self.width_spin.setRange(1, 16384)
         self.width_spin.setValue(512)
         self.width_spin.setSuffix(" px")
         self.width_spin.setStyleSheet(self._spin_style())
         self.width_spin.valueChanged.connect(lambda: self.settings_changed.emit())
-        export_layout.addWidget(self.width_spin)
+        w_layout.addWidget(self.width_spin)
+        dim_layout.addLayout(w_layout)
 
-        export_layout.addWidget(self._label("Height"))
+        h_layout = QVBoxLayout()
+        h_layout.setSpacing(2)
+        h_layout.addWidget(self._label("Height"))
         self.height_spin = QSpinBox()
         self.height_spin.setRange(1, 16384)
         self.height_spin.setValue(512)
         self.height_spin.setSuffix(" px")
         self.height_spin.setStyleSheet(self._spin_style())
         self.height_spin.valueChanged.connect(lambda: self.settings_changed.emit())
-        export_layout.addWidget(self.height_spin)
+        h_layout.addWidget(self.height_spin)
+        dim_layout.addLayout(h_layout)
+
+        export_layout.addLayout(dim_layout)
 
         export_layout.addWidget(self._separator())
-        export_layout.addWidget(self._label("Format"))
+        export_layout.addWidget(self._label("Export Type"))
+        self.export_type_combo = Dropdown()
+        self.export_type_combo.addItem("Image + Caption", "both")
+        self.export_type_combo.addItem("Image Only", "image")
+        self.export_type_combo.addItem("Caption Only", "caption")
+        self.export_type_combo.setStyleSheet(self._combo_style())
+        self.export_type_combo.currentIndexChanged.connect(lambda: self.settings_changed.emit())
+        export_layout.addWidget(self.export_type_combo)
+
+        export_layout.addWidget(self._label("Image Format"))
         self.format_combo = Dropdown()
         self.format_combo.addItem("PNG", "png")
         self.format_combo.addItem("JPEG", "jpeg")
@@ -292,15 +312,20 @@ class Sidebar(QWidget):
         self.clear_btn.setVisible(False)
         layout.addWidget(self.clear_btn)
 
-        self.export_folder_btn = QPushButton("📂 Export to Folder")
+        export_btn_row = QHBoxLayout()
+        export_btn_row.setSpacing(6)
+
+        self.export_folder_btn = QPushButton("📂 To Folder")
         self.export_folder_btn.setStyleSheet(self._btn_primary_style())
         self.export_folder_btn.clicked.connect(self.export_clicked.emit)
-        layout.addWidget(self.export_folder_btn)
+        export_btn_row.addWidget(self.export_folder_btn)
 
-        self.export_zip_btn = QPushButton("📦 Save as ZIP")
+        self.export_zip_btn = QPushButton("📦 As ZIP")
         self.export_zip_btn.setStyleSheet(self._btn_primary_style())
         self.export_zip_btn.clicked.connect(self.export_zip_clicked.emit)
-        layout.addWidget(self.export_zip_btn)
+        export_btn_row.addWidget(self.export_zip_btn)
+
+        layout.addLayout(export_btn_row)
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
@@ -436,6 +461,10 @@ class Sidebar(QWidget):
     @property
     def output_format(self) -> str:
         return self.format_combo.currentData()
+
+    @property
+    def export_type(self) -> str:
+        return self.export_type_combo.currentData()
 
     @property
     def zip_filename_template(self) -> str:
