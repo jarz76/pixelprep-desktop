@@ -6,7 +6,7 @@ import json
 import urllib.request
 import urllib.error
 
-from PIL import Image
+from PIL import Image, ImageOps
 from PyQt6.QtCore import QObject, QRunnable, QThreadPool, pyqtSignal, pyqtSlot
 
 from core.image_data import ImageItem
@@ -53,6 +53,7 @@ class CaptionWorker(QRunnable):
 
     def get_base64_image(self) -> str:
         img = Image.open(self.item.file_path)
+        img = ImageOps.exif_transpose(img)
         img = img.convert("RGBA")
 
         original_w, original_h = img.size

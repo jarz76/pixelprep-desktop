@@ -3,7 +3,7 @@
 import os
 import zipfile
 
-from PIL import Image
+from PIL import Image, ImageOps
 from PyQt6.QtCore import QObject, QRunnable, QThreadPool, pyqtSignal, pyqtSlot
 
 
@@ -64,6 +64,7 @@ class ExportWorker(QRunnable):
                 return
 
             img = Image.open(self.file_path)
+            img = ImageOps.exif_transpose(img)
             img = img.convert("RGBA")
 
             # Store original dimensions BEFORE rotation
@@ -260,6 +261,7 @@ class BatchExporter(QObject):
 def generate_thumbnail(file_path: str, thumb_size: int = 200) -> tuple[bytes, int, int, int, int]:
     """Generate a thumbnail. Returns (rgba_bytes, tw, th, orig_w, orig_h)."""
     img = Image.open(file_path)
+    img = ImageOps.exif_transpose(img)
     orig_w, orig_h = img.size
     img.thumbnail((thumb_size, thumb_size), Image.LANCZOS)
     img = img.convert("RGBA")
