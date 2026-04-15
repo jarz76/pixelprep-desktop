@@ -181,24 +181,7 @@ class Sidebar(QWidget):
 
         settings = QSettings("PixelPrep", "Settings")
 
-        # API Settings button row
-        api_row = QHBoxLayout()
-        api_row.setSpacing(6)
 
-        self._api_info_label = QLabel()
-        self._update_api_info_label()
-        self._api_info_label.setTextFormat(Qt.TextFormat.RichText)
-        self._api_info_label.setStyleSheet("background: transparent;")
-        api_row.addWidget(self._api_info_label, 1)
-
-        api_cfg_btn = QPushButton("⚙ API Settings")
-        api_cfg_btn.setStyleSheet(self._btn_secondary_style() + "QPushButton { padding: 4px 8px; font-size: 11px; }")
-        api_cfg_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        api_cfg_btn.clicked.connect(self._open_api_settings)
-        api_row.addWidget(api_cfg_btn)
-        caption_layout.addLayout(api_row)
-
-        caption_layout.addWidget(self._separator_thin())
 
         # Model
         caption_layout.addWidget(self._label("Model"))
@@ -240,13 +223,30 @@ class Sidebar(QWidget):
         self.vision_only_cb.stateChanged.connect(self._save_caption_settings)
         caption_layout.addWidget(self.vision_only_cb)
 
-        caption_layout.addWidget(self._label("System Prompt"))
+        prompt_label_row = QHBoxLayout()
+        
+        self.template_combo = Dropdown()
+        self.template_combo.setStyleSheet(self._combo_small_style())
+        self.template_combo.currentIndexChanged.connect(self._on_template_combo_changed)
+        prompt_label_row.addWidget(self.template_combo, 1)
+        
+        api_cfg_btn = QPushButton("⚙")
+        api_cfg_btn.setToolTip("Settings & Templates")
+        api_cfg_btn.setFixedWidth(28)
+        api_cfg_btn.setStyleSheet(self._btn_secondary_style() + "QPushButton { padding: 0; font-size: 15px; }")
+        api_cfg_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        api_cfg_btn.clicked.connect(self._open_api_settings)
+        prompt_label_row.addWidget(api_cfg_btn)
+        
+        caption_layout.addLayout(prompt_label_row)
+
         self.api_prompt_edit = QTextEdit()
-        self.api_prompt_edit.setPlaceholderText("e.g. Describe this image in detail, focusing on style, composition, and subject.")
-        self.api_prompt_edit.setText(settings.value("api_prompt", "Describe this image in detail."))
-        self.api_prompt_edit.setStyleSheet(self._textedit_style())
-        self.api_prompt_edit.textChanged.connect(self._save_caption_settings)
+        self.api_prompt_edit.setPlaceholderText("Preview system prompt here...")
+        self.api_prompt_edit.setReadOnly(True)
+        self.api_prompt_edit.setStyleSheet(self._textedit_style() + "QTextEdit { color: #8899AA; background: #151E28; }")
         caption_layout.addWidget(self.api_prompt_edit, 1)  # stretch=1 -> expand
+        
+        self._load_prompt_templates()
 
         self.cap_all_btn = QPushButton("✨ Caption All")
         self.cap_all_btn.setStyleSheet(self._btn_secondary_style())
@@ -342,17 +342,56 @@ class Sidebar(QWidget):
     def _save_caption_settings(self):
         settings = QSettings("PixelPrep", "Settings")
         settings.setValue("api_model", self.api_model_combo.currentText().strip())
-        settings.setValue("api_prompt", self.api_prompt_edit.toPlainText())
         settings.setValue("api_vision_only", self.vision_only_cb.isChecked())
 
-    def _update_api_info_label(self):
+    def _load_prompt_templates(self):
+        import json
         settings = QSettings("PixelPrep", "Settings")
-        url = settings.value("api_url", "https://api.openai.com")
-        url_short = url.replace("https://", "").replace("http://", "").rstrip("/")
-        if len(url_short) > 30: url_short = url_short[:30] + "…"
-        self._api_info_label.setText(
-            f"<span style='color:#8899AA;font-size:10px;'>{url_short}</span>"
-        )
+        templates_json = settings.value("system_prompt_templates", "")
+        templates = {}
+        if templates_json:
+            try:
+                templates = json.loads(templates_json)
+            except:
+                pass
+                
+        if not templates:
+            old_prompt = settings.value("api_prompt", "Describe this image in detail.")
+            templates = {"Default": old_prompt}
+            settings.setValue("system_prompt_templates", json.dumps(templates))
+            
+        self.template_combo.blockSignals(True)
+        self.template_combo.clear()
+        self.template_combo.addItems(sorted(list(templates.keys())))
+        
+        active = settings.value("system_prompt_active_template", "Default")
+        if active in templates:
+            self.template_combo.setCurrentText(active)
+            self.api_prompt_edit.setText(templates[active])
+        elif templates:
+            first_key = sorted(list(templates.keys()))[0]
+            self.template_combo.setCurrentText(first_key)
+            self.api_prompt_edit.setText(templates[first_key])
+            settings.setValue("system_prompt_active_template", first_key)
+        
+        self.template_combo.blockSignals(False)
+
+    def _on_template_combo_changed(self):
+        import json
+        settings = QSettings("PixelPrep", "Settings")
+        templates_json = settings.value("system_prompt_templates", "")
+        templates = {}
+        if templates_json:
+            try:
+                templates = json.loads(templates_json)
+            except:
+                pass
+        
+        active = self.template_combo.currentText()
+        if active and active in templates:
+            self.api_prompt_edit.setText(templates[active])
+            settings.setValue("system_prompt_active_template", active)
+            self.caption_settings_changed.emit()
 
     def _emit_replace_all(self):
         target = self.find_edit.text()
@@ -364,7 +403,7 @@ class Sidebar(QWidget):
         from ui.api_settings_dialog import ApiSettingsDialog
         dlg = ApiSettingsDialog(self)
         if dlg.exec():
-            self._update_api_info_label()
+            self._load_prompt_templates()
             self.caption_settings_changed.emit()
 
     def _fetch_models(self):
